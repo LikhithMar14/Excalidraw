@@ -1,10 +1,10 @@
 import express from "express";
 import jwt from "jsonwebtoken"
-import dotenv from "dotenv"
+
 import { middleware } from "./middleware";
 const app = express();
-dotenv.config();
-
+import { JWT_SECRET } from "@repo/backend-common/config";
+import { CreateUserSchema } from "@repo/common/types"
 app.listen(3001);   
 
 
@@ -20,7 +20,7 @@ app.post('/login',async(req,res) => {
     const userId = 1;
     const token = jwt.sign({
         userId
-    },process.env.JWT_SECRET as string)
+    },JWT_SECRET as string)
 
     res.json({
         token
