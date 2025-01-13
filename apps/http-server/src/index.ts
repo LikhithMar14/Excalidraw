@@ -1,9 +1,8 @@
 import express from "express";
 import jwt from "jsonwebtoken";
 
-import { middleware } from "./middleware";
+import { verifyToken } from "./middleware";
 import { Request, Response } from "express";
-const app = express();
 import { JWT_SECRET } from "@repo/backend-common/config";
 import {
   CreateRoomSchema,
@@ -11,6 +10,10 @@ import {
   SigninSchema,
 } from "@repo/common/types";
 import { db } from "@repo/db/client";
+import type { User} from "@repo/db/types";
+
+const app = express();
+
 
 app.use(express.json());
 
@@ -44,7 +47,7 @@ app.post("/signup", async (req, res) => {
     });
   }
 });
-app.post("/login", async (req, res) => {
+app.post("/login", async (req:Request, res) => {
   const validatedData = SigninSchema.parse(req.body);
   if (!validatedData) {
     res.json(401);
@@ -53,20 +56,30 @@ app.post("/login", async (req, res) => {
     where: {
       username: validatedData.username,
     },
+    select:{
+      id:true
+    }
   });
+  console.log("Response: ",response)
   if (!response) {
     res.status(403).json({
       message: "Not authorized",
     });
     return;
   }
-
+  
   const token = jwt.sign(
     {
       userId: response.id,
     },
     JWT_SECRET as string
   );
+  
+  console.log("Token in login route: ",token)
+
+
+  res.set("Authorization", `Bearer ${token}`);
+  console.log(req.header('Authorization'))
 
 
   res.json({
@@ -74,8 +87,11 @@ app.post("/login", async (req, res) => {
   });
 });
 
-app.post("/room", middleware, async (req: Request, res: Response) => {
+app.post("/room", verifyToken, async (req: Request, res: Response) => {
+
   console.log("IN room")
+
+  console.log("User in the Request: ",req.user)
   const validatedData = CreateRoomSchema.parse(req.body);
   if (!validatedData) {
     res.status(403).json({
@@ -83,23 +99,60 @@ app.post("/room", middleware, async (req: Request, res: Response) => {
     });
     return;
   }
-  const userId = req.user?.userId;
+  const userId = req.user?.id;
   if (!userId) return;
 
-  try {
-    console.log("Inside the room try catch block")
+
+
     const room = await db.room.create({
       data: {
         slug: validatedData.name,
         adminId: userId,
       },
     });
+    console.log(room)
     res.json({
       roomId: room.id,
     });
-  } catch (err) {
-    res.status(411).json({
-      message: "Room already exists with this name",
-    });
-  }
+
+
+  
 });
+
+app.post("/chat/:roomId",async(req,res) => {
+  try{
+    const roomId = parseInt(req.params.roomId)
+    const messages = await db.chat.findMany({
+      where:{
+        roomId
+      },
+      orderBy:{
+        id : "desc"
+      },
+      take : 50
+    });
+
+    res.json({
+      messages
+    })
+  }catch(err){
+    console.error(err);
+    res.json({
+      messages:[]
+    })
+  }
+})
+
+app.post("/room/:slug",async(req,res) => {
+  const slug = req.params.slug;
+  const room = await db.room.findFirst({
+    where:{
+      slug
+    }
+  })
+
+  res.json({
+    room
+  })
+})
+
